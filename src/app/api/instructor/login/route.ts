@@ -4,34 +4,41 @@ import { NextRequest, NextResponse } from "next/server";
 import bcryptjs from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 
-connect()
-
 export async function POST(req: NextRequest) {
     try {
+        await connect();
         const reqBody = await req.json()
         const { email, password } = reqBody
-        const user = await User.findOne({ email })
-        console.log(user);
+        
+        if (!email || !password) {
+            return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
+        }
+        
+        const user = await User.findOne({ email }).select('+password')
         
         if (!user) {
             return NextResponse.json({ error: 'User does not exist' }, { status: 400 })
         }
-        if (user.role != 'instructor') {
+        if (user.role !== 'instructor') {
             return NextResponse.json({ error: 'Not an Instructor' }, { status: 400 })
+        }
+        // Check if password exists (should always exist, but safety check)
+        if(!user.password){
+            return NextResponse.json({ error: "Invalid credentials" }, { status: 400 })
         }
         const validPassword = await bcryptjs.compare(password, user.password)
         if (!validPassword) {
-            return NextResponse.json({ error: "Invalid password" })
+            return NextResponse.json({ error: "Invalid password" }, { status: 400 })
         }
         const tokenData = {
-            id: user._id
+            id: user._id,
+            role: user.role
         }
-        const token = await jwt.sign(tokenData, process.env.JWT_SECRET_KEY!, { expiresIn: "1h" })
+        const token = jwt.sign(tokenData, process.env.JWT_SECRET_KEY!, { expiresIn: "1h" })
         const response = NextResponse.json({
             message: 'Instructor login successful',
             success: true
         })
-        console.log(response);
 
         response.cookies.set('token', token, { httpOnly: true })
         return response
